@@ -53,6 +53,12 @@
 	head = /obj/item/clothing/head/helmet/space/plasmaman/security/warden
 	uniform = /obj/item/clothing/under/plasmaman/security/warden
 
+/datum/outfit/plasmaman/prisoner
+	name = "Prisoner Plasmaman"
+
+	head = /obj/item/clothing/head/helmet/space/plasmaman/prisoner
+	uniform = /obj/item/clothing/under/plasmaman/prisoner
+
 /datum/outfit/plasmaman/cargo
 	name = "Cargo Plasmaman"
 
@@ -70,6 +76,12 @@
 
 	head = /obj/item/clothing/head/helmet/space/plasmaman/medical
 	uniform = /obj/item/clothing/under/plasmaman/medical
+
+/datum/outfit/plasmaman/paramedic
+	name = "Paramedic Plasmaman"
+
+	head = /obj/item/clothing/head/helmet/space/plasmaman/paramedic
+	uniform = /obj/item/clothing/under/plasmaman/paramedic
 
 /datum/outfit/plasmaman/viro
 	name = "Virology Plasmaman"
@@ -113,4 +125,16 @@
 	head = /obj/item/clothing/head/helmet/space/plasmaman/atmospherics
 	uniform = /obj/item/clothing/under/plasmaman/atmospherics
 
+/datum/outfit/plasmaman/mime
+	name = "Plasmamime"
 
+	head = /obj/item/clothing/head/helmet/space/plasmaman/mime
+	uniform = /obj/item/clothing/under/plasmaman/mime
+	mask = /obj/item/clothing/mask/gas/mime
+
+/datum/outfit/plasmaman/clown
+	name = "Plasmaclown"
+
+	head = /obj/item/clothing/head/helmet/space/plasmaman/clown
+	uniform = /obj/item/clothing/under/plasmaman/clown
+	mask = /obj/item/clothing/mask/gas/clown_hat

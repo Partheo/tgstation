@@ -64,10 +64,9 @@
 	var/interrupted = FALSE
 	var/mob/target
 	var/icon/bluespace
-	var/datum/weakref/redirect_component
 
 /datum/status_effect/slimerecall/on_apply()
-	redirect_component = WEAKREF(owner.AddComponent(/datum/component/redirect, list(COMSIG_LIVING_RESIST = CALLBACK(src, .proc/resistField))))
+	RegisterSignal(owner, COMSIG_LIVING_RESIST, .proc/resistField)
 	to_chat(owner, "<span class='danger'>You feel a sudden tug from an unknown force, and feel a pull to bluespace!</span>")
 	to_chat(owner, "<span class='notice'>Resist if you wish avoid the force!</span>")
 	bluespace = icon('icons/effects/effects.dmi',"chronofield")
@@ -78,8 +77,7 @@
 	interrupted = TRUE
 	owner.remove_status_effect(src)
 /datum/status_effect/slimerecall/on_remove()
-	qdel(redirect_component.resolve())
-	redirect_component = null
+	UnregisterSignal(owner, COMSIG_LIVING_RESIST)
 	owner.cut_overlay(bluespace)
 	if(interrupted || !ismob(target))
 		to_chat(owner, "<span class='warning'>The bluespace tug fades away, and you feel that the force has passed you by.</span>")
@@ -98,10 +96,9 @@
 	duration = -1 //Will remove self when block breaks.
 	alert_type = /obj/screen/alert/status_effect/freon/stasis
 	var/obj/structure/ice_stasis/cube
-	var/datum/weakref/redirect_component
 
 /datum/status_effect/frozenstasis/on_apply()
-	redirect_component = WEAKREF(owner.AddComponent(/datum/component/redirect, list(COMSIG_LIVING_RESIST = CALLBACK(src, .proc/breakCube))))
+	RegisterSignal(owner, COMSIG_LIVING_RESIST, .proc/breakCube)
 	cube = new /obj/structure/ice_stasis(get_turf(owner))
 	owner.forceMove(cube)
 	owner.status_flags |= GODMODE
@@ -118,8 +115,7 @@
 	if(cube)
 		qdel(cube)
 	owner.status_flags &= ~GODMODE
-	qdel(redirect_component.resolve())
-	redirect_component = null
+	UnregisterSignal(owner, COMSIG_LIVING_RESIST)
 
 /datum/status_effect/slime_clone
 	id = "slime_cloned"
@@ -198,11 +194,6 @@
 
 /datum/status_effect/bloodchill/on_remove()
 	owner.remove_movespeed_modifier("bloodchilled")
-
-/obj/screen/alert/status_effect/bloodchill
-	name = "Bloodchilled"
-	desc = "You feel a shiver down your spine after getting hit with a glob of cold blood. You'll move slower and get frostbite for a while!"
-	icon_state = "bloodchill"
 
 /datum/status_effect/bonechill
 	id = "bonechill"
@@ -471,7 +462,7 @@ datum/status_effect/rebreathing/tick()
 /datum/status_effect/stabilized/grey/tick()
 	for(var/mob/living/simple_animal/slime/S in range(1, get_turf(owner)))
 		if(!(owner in S.Friends))
-			to_chat(owner, "<span class='notice'>[linked_extract] pulses gently as it communicates with [S]</span>")
+			to_chat(owner, "<span class='notice'>[linked_extract] pulses gently as it communicates with [S].</span>")
 			S.Friends[owner] = 1
 	return ..()
 
@@ -566,7 +557,7 @@ datum/status_effect/stabilized/blue/on_remove()
 	name = "burning fingertips"
 	desc = "You shouldn't see this."
 
-/obj/item/hothands/is_hot()
+/obj/item/hothands/get_temperature()
 	return 290 //Below what's required to ignite plasma.
 
 /datum/status_effect/stabilized/darkpurple
@@ -693,7 +684,7 @@ datum/status_effect/stabilized/blue/on_remove()
 /datum/status_effect/stabilized/sepia/tick()
 	if(prob(50) && mod > -1)
 		mod--
-		owner.add_movespeed_modifier(MOVESPEED_ID_SEPIA, override = TRUE, update=TRUE, priority=100, multiplicative_slowdown=-1, blacklisted_movetypes=(FLYING|FLOATING))
+		owner.add_movespeed_modifier(MOVESPEED_ID_SEPIA, override = TRUE, update=TRUE, priority=100, multiplicative_slowdown=-0.5, blacklisted_movetypes=(FLYING|FLOATING))
 	else if(mod < 1)
 		mod++
 		// yeah a value of 0 does nothing but replacing the trait in place is cheaper than removing and adding repeatedly
@@ -909,14 +900,14 @@ datum/status_effect/stabilized/blue/on_remove()
 	colour = "light pink"
 
 /datum/status_effect/stabilized/lightpink/on_apply()
-	owner.add_movespeed_modifier(MOVESPEED_ID_SLIME_STATUS, update=TRUE, priority=100, multiplicative_slowdown=-1, blacklisted_movetypes=(FLYING|FLOATING))
+	owner.add_movespeed_modifier(MOVESPEED_ID_SLIME_STATUS, update=TRUE, priority=100, multiplicative_slowdown=-0.5, blacklisted_movetypes=(FLYING|FLOATING))
 	return ..()
 
 /datum/status_effect/stabilized/lightpink/tick()
 	for(var/mob/living/carbon/human/H in range(1, get_turf(owner)))
-		if(H != owner && H.stat != DEAD && H.health <= 0 && !H.reagents.has_reagent("epinephrine"))
+		if(H != owner && H.stat != DEAD && H.health <= 0 && !H.reagents.has_reagent(/datum/reagent/medicine/epinephrine))
 			to_chat(owner, "[linked_extract] pulses in sync with [H]'s heartbeat, trying to keep [H.p_them()] alive.")
-			H.reagents.add_reagent("epinephrine",5)
+			H.reagents.add_reagent(/datum/reagent/medicine/epinephrine,5)
 	return ..()
 
 /datum/status_effect/stabilized/lightpink/on_remove()
@@ -938,9 +929,10 @@ datum/status_effect/stabilized/blue/on_remove()
 		familiar = new linked.mob_type(get_turf(owner.loc))
 		familiar.name = linked.mob_name
 		familiar.del_on_death = TRUE
-		familiar.copy_known_languages_from(owner, FALSE)
+		familiar.copy_languages(owner, LANGUAGE_MASTER)
 		if(linked.saved_mind)
 			linked.saved_mind.transfer_to(familiar)
+			familiar.update_atom_languages()
 			familiar.ckey = linked.saved_mind.key
 	else
 		if(familiar.mind)

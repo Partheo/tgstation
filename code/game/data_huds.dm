@@ -52,10 +52,10 @@
 /datum/atom_hud/data/diagnostic
 
 /datum/atom_hud/data/diagnostic/basic
-	hud_icons = list(DIAG_HUD, DIAG_STAT_HUD, DIAG_BATT_HUD, DIAG_MECH_HUD, DIAG_BOT_HUD, DIAG_CIRCUIT_HUD, DIAG_TRACK_HUD, DIAG_AIRLOCK_HUD, DIAG_NANITE_FULL_HUD)
+	hud_icons = list(DIAG_HUD, DIAG_STAT_HUD, DIAG_BATT_HUD, DIAG_MECH_HUD, DIAG_BOT_HUD, DIAG_CIRCUIT_HUD, DIAG_TRACK_HUD, DIAG_AIRLOCK_HUD, DIAG_NANITE_FULL_HUD, DIAG_LAUNCHPAD_HUD)
 
 /datum/atom_hud/data/diagnostic/advanced
-	hud_icons = list(DIAG_HUD, DIAG_STAT_HUD, DIAG_BATT_HUD, DIAG_MECH_HUD, DIAG_BOT_HUD, DIAG_CIRCUIT_HUD, DIAG_TRACK_HUD, DIAG_AIRLOCK_HUD, DIAG_NANITE_FULL_HUD, DIAG_PATH_HUD)
+	hud_icons = list(DIAG_HUD, DIAG_STAT_HUD, DIAG_BATT_HUD, DIAG_MECH_HUD, DIAG_BOT_HUD, DIAG_CIRCUIT_HUD, DIAG_TRACK_HUD, DIAG_AIRLOCK_HUD, DIAG_NANITE_FULL_HUD, DIAG_LAUNCHPAD_HUD, DIAG_PATH_HUD)
 
 /datum/atom_hud/data/bot_path
 	hud_icons = list(DIAG_PATH_HUD)
@@ -149,7 +149,6 @@
 			return "health-85"
 		else
 			return "health-100"
-	return "0"
 
 //HOOKS
 
@@ -187,12 +186,10 @@
 	if(HAS_TRAIT(src, TRAIT_XENO_HOST))
 		holder.icon_state = "hudxeno"
 	else if(stat == DEAD || (HAS_TRAIT(src, TRAIT_FAKEDEATH)))
-		if(tod)
-			var/tdelta = round(world.time - timeofdeath)
-			if(tdelta < (DEFIB_TIME_LIMIT * 10))
-				holder.icon_state = "huddefib"
-				return
-		holder.icon_state = "huddead"
+		if(key || get_ghost(FALSE, TRUE))
+			holder.icon_state = "huddefib"
+		else
+			holder.icon_state = "huddead"
 	else
 		switch(virus_threat)
 			if(DISEASE_SEVERITY_BIOHAZARD)
@@ -302,7 +299,6 @@
 			return "crit"
 		else
 			return "dead"
-	return "dead"
 
 //Sillycone hooks
 /mob/living/silicon/proc/diag_hud_set_health()

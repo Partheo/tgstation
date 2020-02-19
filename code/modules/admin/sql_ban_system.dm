@@ -239,7 +239,7 @@
 			output += "</div></div>"
 		//departments/groups that don't have command staff would throw a javascript error since there's no corresponding reference for toggle_head()
 		var/list/headless_job_lists = list("Silicon" = GLOB.nonhuman_positions,
-										"Abstract" = list("Appearance", "Emote", "OOC"))
+										"Abstract" = list("Appearance", "Emote", "Deadchat", "OOC"))
 		for(var/department in headless_job_lists)
 			output += "<div class='column'><label class='rolegroup [ckey(department)]'><input type='checkbox' name='[department]' class='hidden' [usr.client.prefs.tgui_fancy ? " onClick='toggle_checkboxes(this, \"_com\")'" : ""]>[department]</label><div class='content'>"
 			break_counter = 0
@@ -259,8 +259,8 @@
 									ROLE_DEVIL, ROLE_INTERNAL_AFFAIRS, ROLE_MALF,
 									ROLE_MONKEY, ROLE_NINJA, ROLE_OPERATIVE,
 									ROLE_OVERTHROW, ROLE_REV, ROLE_REVENANT,
-									ROLE_REV_HEAD, ROLE_SERVANT_OF_RATVAR, ROLE_SYNDICATE,
-									ROLE_TRAITOR, ROLE_WIZARD)) //ROLE_REV_HEAD is excluded from this because rev jobbans are handled by ROLE_REV
+									ROLE_REV_HEAD, ROLE_SYNDICATE,
+									ROLE_TRAITOR, ROLE_WIZARD, ROLE_HIVE)) //ROLE_REV_HEAD is excluded from this because rev jobbans are handled by ROLE_REV
 		for(var/department in long_job_lists)
 			output += "<div class='column'><label class='rolegroup long [ckey(department)]'><input type='checkbox' name='[department]' class='hidden' [usr.client.prefs.tgui_fancy ? " onClick='toggle_checkboxes(this, \"_com\")'" : ""]>[department]</label><div class='content'>"
 			break_counter = 0
@@ -489,7 +489,7 @@
 	log_admin_private("[kn] [msg][roles_to_ban[1] == "Server" ? "" : " Roles: [roles_to_ban.Join(", ")]"] Reason: [reason]")
 	message_admins("[kna] [msg][roles_to_ban[1] == "Server" ? "" : " Roles: [roles_to_ban.Join("\n")]"]\nReason: [reason]")
 	if(applies_to_admins)
-		send2irc("BAN ALERT","[kn] [msg]")
+		send2tgs("BAN ALERT","[kn] [msg]")
 	if(player_ckey)
 		create_message("note", player_ckey, admin_ckey, note_reason, null, null, 0, 0, null, 0, severity)
 	var/client/C = GLOB.directory[player_ckey]
@@ -635,11 +635,11 @@
 	var/client/C = GLOB.directory[player_key]
 	if(C)
 		build_ban_cache(C)
-		to_chat(C, "<span class='boldannounce'>[usr.client.key] has removed a ban from [role] for your key.")
+		to_chat(C, "<span class='boldannounce'>[usr.client.key] has removed a ban from [role] for your key.</span>")
 	for(var/client/i in GLOB.clients - C)
 		if(i.address == player_ip || i.computer_id == player_cid)
 			build_ban_cache(i)
-			to_chat(i, "<span class='boldannounce'>[usr.client.key] has removed a ban from [role] for your IP or CID.")
+			to_chat(i, "<span class='boldannounce'>[usr.client.key] has removed a ban from [role] for your IP or CID.</span>")
 	unban_panel(player_key, admin_key, player_ip, player_cid, page)
 
 /datum/admins/proc/edit_ban(ban_id, player_key, ip_check, player_ip, cid_check, player_cid, use_last_connection, applies_to_admins, duration, interval, reason, mirror_edit, old_key, old_ip, old_cid, old_applies, admin_key, page, list/changes)
@@ -726,15 +726,15 @@
 	log_admin_private("[kn] has edited the [changes_keys_text] of a ban for [old_key ? "[old_key]" : "[old_ip]-[old_cid]"].") //if a ban doesn't have a key it must have an ip and/or a cid to have reached this point normally
 	message_admins("[kna] has edited the [changes_keys_text] of a ban for [old_key ? "[old_key]" : "[old_ip]-[old_cid]"].")
 	if(changes["Applies to admins"])
-		send2irc("BAN ALERT","[kn] has edited a ban for [old_key ? "[old_key]" : "[old_ip]-[old_cid]"] to [applies_to_admins ? "" : "not"]affect admins")
+		send2tgs("BAN ALERT","[kn] has edited a ban for [old_key ? "[old_key]" : "[old_ip]-[old_cid]"] to [applies_to_admins ? "" : "not"]affect admins")
 	var/client/C = GLOB.directory[old_key]
 	if(C)
 		build_ban_cache(C)
-		to_chat(C, "<span class='boldannounce'>[usr.client.key] has edited the [changes_keys_text] of a ban for your key.")
+		to_chat(C, "<span class='boldannounce'>[usr.client.key] has edited the [changes_keys_text] of a ban for your key.</span>")
 	for(var/client/i in GLOB.clients - C)
 		if(i.address == old_ip || i.computer_id == old_cid)
 			build_ban_cache(i)
-			to_chat(i, "<span class='boldannounce'>[usr.client.key] has edited the [changes_keys_text] of a ban for your IP or CID.")
+			to_chat(i, "<span class='boldannounce'>[usr.client.key] has edited the [changes_keys_text] of a ban for your IP or CID.</span>")
 	unban_panel(player_key, null, null, null, page)
 
 /datum/admins/proc/ban_log(ban_id)

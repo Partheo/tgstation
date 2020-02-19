@@ -2,9 +2,10 @@
 	name = "clothing"
 	resistance_flags = FLAMMABLE
 	max_integrity = 200
-	integrity_failure = 80
+	integrity_failure = 0.4
 	var/damaged_clothes = 0 //similar to machine's BROKEN stat and structure's broken var
-	var/flash_protect = 0		//What level of bright light protection item has. 1 = Flashers, Flashes, & Flashbangs | 2 = Welding | -1 = OH GOD WELDING BURNT OUT MY RETINAS
+	///What level of bright light protection item has.
+	var/flash_protect = FLASH_PROTECTION_NONE
 	var/tint = 0				//Sets the item's level of visual impairment tint, normally set to the same as flash_protect
 	var/up = 0					//but separated to allow items to protect but not impair vision, like space helmets
 	var/visor_flags = 0			//flags that are added/removed when an item is adjusted up/down
@@ -20,9 +21,6 @@
 	var/active_sound = null
 	var/toggle_cooldown = null
 	var/cooldown = 0
-	var/scan_reagents = 0 //Can the wearer see reagents while it's equipped?
-
-	var/blocks_shove_knockdown = FALSE //Whether wearing the clothing item blocks the ability for shove to knock down.
 
 	var/clothing_flags = NONE
 
@@ -40,8 +38,9 @@
 	var/dynamic_fhair_suffix = ""//mask > head for facial hair
 
 
+
 /obj/item/clothing/Initialize()
-	if(CHECK_BITFIELD(clothing_flags, VOICEBOX_TOGGLABLE))
+	if((clothing_flags & VOICEBOX_TOGGLABLE))
 		actions_types += /datum/action/item_action/toggle_voice_box
 	. = ..()
 	if(ispath(pocket_storage_component_path))
@@ -62,8 +61,9 @@
 /obj/item/reagent_containers/food/snacks/clothing
 	name = "temporary moth clothing snack item"
 	desc = "If you're reading this it means I messed up. This is related to moths eating clothes and I didn't know a better way to do it than making a new food object."
-	list_reagents = list("nutriment" = 1)
+	list_reagents = list(/datum/reagent/consumable/nutriment = 1)
 	tastes = list("dust" = 1, "lint" = 1)
+	foodtype = CLOTH
 
 /obj/item/clothing/attack(mob/M, mob/user, def_zone)
 	if(user.a_intent != INTENT_HARM && ismoth(M))
@@ -104,7 +104,7 @@
 	..()
 	if (!istype(user))
 		return
-	if(slot_flags & slotdefine2slotbit(slot)) //Was equipped to a valid slot for this item?
+	if(slot_flags & slot) //Was equipped to a valid slot for this item?
 		if (LAZYLEN(user_vars_to_edit))
 			for(var/variable in user_vars_to_edit)
 				if(variable in user.vars)
@@ -112,25 +112,33 @@
 					user.vv_edit_var(variable, user_vars_to_edit[variable])
 
 /obj/item/clothing/examine(mob/user)
-	..()
-	clothing_resistance_flag_examine_message(user)
+	. = ..()
+	switch (max_heat_protection_temperature)
+		if (400 to 1000)
+			. += "[src] offers the wearer limited protection from fire."
+		if (1001 to 1600)
+			. += "[src] offers the wearer some protection from fire."
+		if (1601 to 35000)
+			. += "[src] offers the wearer robust protection from fire."
 	if(damaged_clothes)
-		to_chat(user,  "<span class='warning'>It looks damaged!</span>")
-	GET_COMPONENT(pockets, /datum/component/storage)
+		. += "<span class='warning'>It looks damaged!</span>"
+	var/datum/component/storage/pockets = GetComponent(/datum/component/storage)
 	if(pockets)
 		var/list/how_cool_are_your_threads = list("<span class='notice'>")
 		if(pockets.attack_hand_interact)
 			how_cool_are_your_threads += "[src]'s storage opens when clicked.\n"
 		else
 			how_cool_are_your_threads += "[src]'s storage opens when dragged to yourself.\n"
-		how_cool_are_your_threads += "[src] can store [pockets.max_items] item\s.\n"
-		how_cool_are_your_threads += "[src] can store items that are [weightclass2text(pockets.max_w_class)] or smaller.\n"
+		if (pockets.can_hold?.len) // If pocket type can hold anything, vs only specific items
+			how_cool_are_your_threads += "[src] can store [pockets.max_items] <a href='?src=[REF(src)];show_valid_pocket_items=1'>item\s</a>.\n"
+		else
+			how_cool_are_your_threads += "[src] can store [pockets.max_items] item\s that are [weightclass2text(pockets.max_w_class)] or smaller.\n"
 		if(pockets.quickdraw)
 			how_cool_are_your_threads += "You can quickly remove an item from [src] using Alt-Click.\n"
 		if(pockets.silent)
 			how_cool_are_your_threads += "Adding or removing items from [src] makes no noise.\n"
 		how_cool_are_your_threads += "</span>"
-		to_chat(user, how_cool_are_your_threads.Join())
+		. += how_cool_are_your_threads.Join()
 
 /obj/item/clothing/obj_break(damage_flag)
 	if(!damaged_clothes)
@@ -169,7 +177,7 @@ BLIND     // can't see anything
 
 /proc/generate_female_clothing(index,t_color,icon,type)
 	var/icon/female_clothing_icon	= icon("icon"=icon, "icon_state"=t_color)
-	var/icon/female_s				= icon("icon"='icons/mob/uniform.dmi', "icon_state"="[(type == FEMALE_UNIFORM_FULL) ? "female_full" : "female_top"]")
+	var/icon/female_s				= icon("icon"='icons/mob/clothing/under/masking_helpers.dmi', "icon_state"="[(type == FEMALE_UNIFORM_FULL) ? "female_full" : "female_top"]")
 	female_clothing_icon.Blend(female_s, ICON_MULTIPLY)
 	female_clothing_icon 			= fcopy_rsc(female_clothing_icon)
 	GLOB.female_clothing_icons[index] = female_clothing_icon
@@ -291,6 +299,15 @@ BLIND     // can't see anything
 	if(visor_vars_to_toggle & VISOR_TINT)
 		tint ^= initial(tint)
 
+/obj/item/clothing/head/helmet/space/plasmaman/visor_toggling() //handles all the actual toggling of flags
+	up = !up
+	clothing_flags ^= visor_flags
+	flags_inv ^= visor_flags_inv
+	icon_state = "[initial(icon_state)]"
+	if(visor_vars_to_toggle & VISOR_FLASHPROTECT)
+		flash_protect ^= initial(flash_protect)
+	if(visor_vars_to_toggle & VISOR_TINT)
+		tint ^= initial(tint)
 
 /obj/item/clothing/proc/can_use(mob/user)
 	if(user && ismob(user))
@@ -302,9 +319,8 @@ BLIND     // can't see anything
 /obj/item/clothing/obj_destruction(damage_flag)
 	if(damage_flag == "bomb" || damage_flag == "melee")
 		var/turf/T = get_turf(src)
-		spawn(1) //so the shred survives potential turf change from the explosion.
-			var/obj/effect/decal/cleanable/shreds/Shreds = new(T)
-			Shreds.desc = "The sad remains of what used to be [name]."
+		//so the shred survives potential turf change from the explosion.
+		addtimer(CALLBACK_NEW(/obj/effect/decal/cleanable/shreds, list(T, name)), 1)
 		deconstruct(FALSE)
 	else
 		..()

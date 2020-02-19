@@ -29,26 +29,55 @@ GLOBAL_LIST_INIT(uplink_items, subtypesof(/datum/uplink_item))
 		if(I.limited_stock < 0 && !I.cant_discount && I.item && I.cost > 1)
 			sale_items += I
 	if(allow_sales)
-		for(var/i in 1 to 3)
-			var/datum/uplink_item/I = pick_n_take(sale_items)
-			var/datum/uplink_item/A = new I.type
-			var/discount = A.get_discount()
-			var/list/disclaimer = list("Void where prohibited.", "Not recommended for children.", "Contains small parts.", "Check local laws for legality in region.", "Do not taunt.", "Not responsible for direct, indirect, incidental or consequential damages resulting from any defect, error or failure to perform.", "Keep away from fire or flames.", "Product is provided \"as is\" without any implied or expressed warranties.", "As seen on TV.", "For recreational use only.", "Use only as directed.", "16% sales tax will be charged for orders originating within Space Nebraska.")
-			A.limited_stock = 1
-			I.refundable = FALSE //THIS MAN USES ONE WEIRD TRICK TO GAIN FREE TC, CODERS HATES HIM!
-			A.refundable = FALSE
-			if(A.cost >= 20) //Tough love for nuke ops
-				discount *= 0.5
-			A.cost = max(round(A.cost * discount),1)
-			A.category = "Discounted Gear"
-			A.name += " ([round(((initial(A.cost)-A.cost)/initial(A.cost))*100)]% off!)"
-			A.desc += " Normally costs [initial(A.cost)] TC. All sales final. [pick(disclaimer)]"
-			A.item = I.item
+		var/datum/team/nuclear/nuclear_team
+		if (gamemode == /datum/game_mode/nuclear) 					// uplink code kind of needs a redesign
+			nuclear_team = locate() in GLOB.antagonist_teams	// the team discounts could be a in a GLOB with this design but it would make sense for them to be team specific...
+		if (!nuclear_team)
+			create_uplink_sales(3, "Discounted Gear", 1, sale_items, filtered_uplink_items)
+		else
+			if (!nuclear_team.team_discounts)
+				// create 5 unlimited stock discounts
+				create_uplink_sales(5, "Discounted Team Gear", -1, sale_items, filtered_uplink_items)
+				// Create 10 limited stock discounts
+				create_uplink_sales(10, "Limited Stock Team Gear", 1, sale_items, filtered_uplink_items)
+				nuclear_team.team_discounts = list("Discounted Team Gear" = filtered_uplink_items["Discounted Team Gear"], "Limited Stock Team Gear" = filtered_uplink_items["Limited Stock Team Gear"])
+			else
+				for(var/cat in nuclear_team.team_discounts)
+					for(var/item in nuclear_team.team_discounts[cat])
+						var/datum/uplink_item/D = nuclear_team.team_discounts[cat][item]
+						var/datum/uplink_item/O = filtered_uplink_items[initial(D.category)][initial(D.name)]
+						O.refundable = FALSE
 
-			if(!filtered_uplink_items[A.category])
-				filtered_uplink_items[A.category] = list()
-			filtered_uplink_items[A.category][A.name] = A
+				filtered_uplink_items["Discounted Team Gear"] = nuclear_team.team_discounts["Discounted Team Gear"]
+				filtered_uplink_items["Limited Stock Team Gear"] = nuclear_team.team_discounts["Limited Stock Team Gear"]
+
+
 	return filtered_uplink_items
+
+/proc/create_uplink_sales(num, category_name, limited_stock, sale_items, uplink_items)
+	if (num <= 0)
+		return
+
+	if(!uplink_items[category_name])
+		uplink_items[category_name] = list()
+
+	for (var/i in 1 to num)
+		var/datum/uplink_item/I = pick_n_take(sale_items)
+		var/datum/uplink_item/A = new I.type
+		var/discount = A.get_discount()
+		var/list/disclaimer = list("Void where prohibited.", "Not recommended for children.", "Contains small parts.", "Check local laws for legality in region.", "Do not taunt.", "Not responsible for direct, indirect, incidental or consequential damages resulting from any defect, error or failure to perform.", "Keep away from fire or flames.", "Product is provided \"as is\" without any implied or expressed warranties.", "As seen on TV.", "For recreational use only.", "Use only as directed.", "16% sales tax will be charged for orders originating within Space Nebraska.")
+		A.limited_stock = limited_stock
+		I.refundable = FALSE //THIS MAN USES ONE WEIRD TRICK TO GAIN FREE TC, CODERS HATES HIM!
+		A.refundable = FALSE
+		if(A.cost >= 20) //Tough love for nuke ops
+			discount *= 0.5
+		A.category = category_name
+		A.cost = max(round(A.cost * discount),1)
+		A.name += " ([round(((initial(A.cost)-A.cost)/initial(A.cost))*100)]% off!)"
+		A.desc += " Normally costs [initial(A.cost)] TC. All sales final. [pick(disclaimer)]"
+		A.item = I.item
+
+		uplink_items[category_name][A.name] = A
 
 
 /**
@@ -66,7 +95,6 @@ GLOBAL_LIST_INIT(uplink_items, subtypesof(/datum/uplink_item))
 	var/refund_amount = 0 // specified refund amount in case there needs to be a TC penalty for refunds.
 	var/refundable = FALSE
 	var/surplus = 100 // Chance of being included in the surplus crate.
-	var/surplus_nullcrates //Chance of being included in null crates. null = pull from surplus
 	var/cant_discount = FALSE
 	var/limited_stock = -1 //Setting this above zero limits how many times this item can be bought by the same traitor in a round, -1 is unlimited
 	var/list/include_modes = list() // Game modes to allow this item in.
@@ -77,11 +105,6 @@ GLOBAL_LIST_INIT(uplink_items, subtypesof(/datum/uplink_item))
 	var/restricted = FALSE // Adds restrictions for VR/Events
 	var/list/restricted_species //Limits items to a specific species. Hopefully.
 	var/illegal_tech = TRUE // Can this item be deconstructed to unlock certain techweb research nodes?
-
-/datum/uplink_item/New()
-	. = ..()
-	if(isnull(surplus_nullcrates))
-		surplus_nullcrates = surplus
 
 /datum/uplink_item/proc/get_discount()
 	return pick(4;0.75,2;0.5,1;0.25)
@@ -102,18 +125,18 @@ GLOBAL_LIST_INIT(uplink_items, subtypesof(/datum/uplink_item))
 	if(ishuman(user) && istype(A, /obj/item))
 		var/mob/living/carbon/human/H = user
 		if(H.put_in_hands(A))
-			to_chat(H, "[A] materializes into your hands!")
+			to_chat(H, "<span class='boldnotice'>[A] materializes into your hands!</span>")
 			return A
-	to_chat(user, "[A] materializes onto the floor.")
+	to_chat(user, "<span class='boldnotice'>[A] materializes onto the floor!</span>")
 	return A
 
 //Discounts (dynamically filled above)
 /datum/uplink_item/discounts
-	category = "Discounted Gear"
+	category = "Discounts"
 
 //All bundles and telecrystals
 /datum/uplink_item/bundles_TC
-	category = "Bundles and Telecrystals"
+	category = "Bundles"
 	surplus = 0
 	cant_discount = TRUE
 
@@ -173,6 +196,17 @@ GLOBAL_LIST_INIT(uplink_items, subtypesof(/datum/uplink_item))
 	cost = 30
 	include_modes = list(/datum/game_mode/nuclear)
 
+/datum/uplink_item/bundles_TC/contract_kit
+	name = "Contract Kit"
+	desc = "The Syndicate have offered you the chance to become a contractor, take on kidnapping contracts for TC and cash payouts. Upon purchase, \
+			you'll be granted your own contract uplink embedded within the supplied tablet computer. Additionally, you'll be granted \
+			standard contractor gear to help with your mission - comes supplied with the tablet, specialised space suit, chameleon jumpsuit and mask, \
+			agent card, specialised contractor baton, and three randomly selected low cost items. Can include otherwise unobtainable items."
+	item = /obj/item/storage/box/syndicate/contract_kit
+	cost = 20
+	player_minimum = 20
+	exclude_modes = list(/datum/game_mode/nuclear, /datum/game_mode/nuclear/clown_ops)
+
 /datum/uplink_item/bundles_TC/bundle_A
 	name = "Syndi-kit Tactical"
 	desc = "Syndicate Bundles, also known as Syndi-Kits, are specialized groups of items that arrive in a plain box. \
@@ -181,7 +215,7 @@ GLOBAL_LIST_INIT(uplink_items, subtypesof(/datum/uplink_item))
 	item = /obj/item/storage/box/syndicate/bundle_A
 	cost = 20
 	exclude_modes = list(/datum/game_mode/nuclear)
-	
+
 /datum/uplink_item/bundles_TC/bundle_B
 	name = "Syndi-kit Special"
 	desc = "Syndicate Bundles, also known as Syndi-Kits, are specialized groups of items that arrive in a plain box. \
@@ -278,7 +312,7 @@ GLOBAL_LIST_INIT(uplink_items, subtypesof(/datum/uplink_item))
 
 // Dangerous Items
 /datum/uplink_item/dangerous
-	category = "Conspicuous and Dangerous Weapons"
+	category = "Conspicuous Weapons"
 
 /datum/uplink_item/dangerous/rawketlawnchair
 	name = "84mm Rocket Propelled Grenade Launcher"
@@ -332,6 +366,7 @@ GLOBAL_LIST_INIT(uplink_items, subtypesof(/datum/uplink_item))
 			throwing weapons. The bolas can knock a target down and the shurikens will embed into limbs."
 	item = /obj/item/storage/box/syndie_kit/throwing_weapons
 	cost = 3
+	illegal_tech = FALSE
 
 /datum/uplink_item/dangerous/shotgun
 	name = "Bulldog Shotgun"
@@ -453,7 +488,7 @@ GLOBAL_LIST_INIT(uplink_items, subtypesof(/datum/uplink_item))
 	name = "Surplus Rifle"
 	desc = "A horribly outdated bolt action weapon. You've got to be desperate to use this."
 	item = /obj/item/gun/ballistic/rifle/boltaction
-	cost = 2
+	cost = 1
 	include_modes = list(/datum/game_mode/nuclear)
 
 /datum/uplink_item/dangerous/revolver
@@ -491,12 +526,12 @@ GLOBAL_LIST_INIT(uplink_items, subtypesof(/datum/uplink_item))
 
 // Stealthy Weapons
 /datum/uplink_item/stealthy_weapons
-	category = "Stealthy and Inconspicuous Weapons"
+	category = "Stealthy Weapons"
 
 /datum/uplink_item/stealthy_weapons/combatglovesplus
 	name = "Combat Gloves Plus"
-	desc = "A pair of gloves that are fireproof and shock resistant, however unlike the regular Combat Gloves this one uses nanotechnology \
-			to learn the abilities of krav maga to the wearer."
+	desc = "A pair of gloves that are fireproof and electrically insulated, however unlike the regular Combat Gloves these use nanotechnology \
+			to teach the martial art of krav maga to the wearer."
 	item = /obj/item/clothing/gloves/krav_maga/combatglovesplus
 	cost = 5
 	include_modes = list(/datum/game_mode/nuclear, /datum/game_mode/nuclear/clown_ops)
@@ -549,6 +584,7 @@ GLOBAL_LIST_INIT(uplink_items, subtypesof(/datum/uplink_item))
 	slur as if inebriated. It can produce an infinite number \
 	of bolts, but takes time to automatically recharge after each shot."
 	item = /obj/item/gun/energy/kinetic_accelerator/crossbow
+	player_minimum = 25
 	cost = 10
 	surplus = 50
 	exclude_modes = list(/datum/game_mode/nuclear)
@@ -595,6 +631,12 @@ GLOBAL_LIST_INIT(uplink_items, subtypesof(/datum/uplink_item))
 	cost = 3
 	surplus = 10
 	exclude_modes = list(/datum/game_mode/nuclear/clown_ops)
+
+/datum/uplink_item/stealthy_weapons/holster
+	name = "Syndicate Holster"
+	desc = "A useful little device that allows for inconspicuous carrying of guns using chameleon technology. It also allows for badass gun-spinning."
+	item = /obj/item/storage/belt/holster/chameleon
+	cost = 1
 
 // Ammunition
 /datum/uplink_item/ammo
@@ -805,9 +847,23 @@ GLOBAL_LIST_INIT(uplink_items, subtypesof(/datum/uplink_item))
 	cost = 1
 	include_modes = list(/datum/game_mode/nuclear)
 
+/datum/uplink_item/ammo/mech/bag
+	name = "Mech Support Kit Bag"
+	desc = "A duffel bag containing ammo for four full reloads of the scattershotm which is equipped on standard Dark Gygax and Mauler exosuits. Also comes with some support equipment for maintaining the mech, including tools and an inducer."
+	item = /obj/item/storage/backpack/duffelbag/syndie/ammo/mech
+	cost = 4
+	include_modes = list(/datum/game_mode/nuclear)
+
+/datum/uplink_item/ammo/mauler/bag
+	name = "Mauler Ammo Bag"
+	desc = "A duffel bag containing ammo for three full reloads of the LMG, scattershot carbine, and SRM-8 missile laucher that are equipped on a standard Mauler exosuit."
+	item = /obj/item/storage/backpack/duffelbag/syndie/ammo/mauler
+	cost = 6
+	include_modes = list(/datum/game_mode/nuclear)
+
 //Grenades and Explosives
 /datum/uplink_item/explosives
-	category = "Grenades and Explosives"
+	category = "Explosives"
 
 /datum/uplink_item/explosives/bioterrorfoam
 	name = "Bioterror Foam Grenade"
@@ -842,7 +898,7 @@ GLOBAL_LIST_INIT(uplink_items, subtypesof(/datum/uplink_item))
 	desc = "C-4 is plastic explosive of the common variety Composition C. You can use it to breach walls, sabotage equipment, or connect \
 			an assembly to it in order to alter the way it detonates. It can be attached to almost all objects and has a modifiable timer with a \
 			minimum setting of 10 seconds."
-	item = /obj/item/grenade/plastic/c4
+	item = /obj/item/grenade/c4
 	cost = 1
 
 /datum/uplink_item/explosives/c4bag
@@ -971,7 +1027,7 @@ GLOBAL_LIST_INIT(uplink_items, subtypesof(/datum/uplink_item))
 
 //Support and Mechs
 /datum/uplink_item/support
-	category = "Support and Mechanized Exosuits"
+	category = "Support and Exosuits"
 	surplus = 0
 	include_modes = list(/datum/game_mode/nuclear)
 
@@ -1045,7 +1101,7 @@ GLOBAL_LIST_INIT(uplink_items, subtypesof(/datum/uplink_item))
 
 // Stealth Items
 /datum/uplink_item/stealthy_tools
-	category = "Stealth and Camouflage Items"
+	category = "Stealth Gadgets"
 
 /datum/uplink_item/stealthy_tools/agent_card
 	name = "Agent Identification Card"
@@ -1104,7 +1160,7 @@ GLOBAL_LIST_INIT(uplink_items, subtypesof(/datum/uplink_item))
 			Useful for disrupting headsets, cameras, doors, lockers and borgs during stealth operations. \
 			Attacking a target with this flashlight will direct an EM pulse at it and consumes a charge."
 	item = /obj/item/flashlight/emp
-	cost = 2
+	cost = 4
 	surplus = 30
 
 /datum/uplink_item/stealthy_tools/mulligan
@@ -1147,7 +1203,7 @@ GLOBAL_LIST_INIT(uplink_items, subtypesof(/datum/uplink_item))
 
 //Space Suits and Hardsuits
 /datum/uplink_item/suits
-	category = "Space Suits and Hardsuits"
+	category = "Space Suits"
 	surplus = 40
 
 /datum/uplink_item/suits/space_suit
@@ -1189,7 +1245,7 @@ GLOBAL_LIST_INIT(uplink_items, subtypesof(/datum/uplink_item))
 
 // Devices and Tools
 /datum/uplink_item/device_tools
-	category = "Devices and Tools"
+	category = "Misc. Gadgets"
 
 /datum/uplink_item/device_tools/cutouts
 	name = "Adaptive Cardboard Cutouts"
@@ -1248,7 +1304,6 @@ GLOBAL_LIST_INIT(uplink_items, subtypesof(/datum/uplink_item))
 	desc = "A robust seven-slot set of webbing that is capable of holding all manner of tactical equipment."
 	item = /obj/item/storage/belt/military
 	cost = 1
-	exclude_modes = list(/datum/game_mode/nuclear)
 
 /datum/uplink_item/device_tools/emag
 	name = "Cryptographic Sequencer"
@@ -1264,7 +1319,6 @@ GLOBAL_LIST_INIT(uplink_items, subtypesof(/datum/uplink_item))
 	item = /obj/item/disk/nuclear/fake
 	cost = 1
 	surplus = 1
-	surplus_nullcrates = 0
 
 /datum/uplink_item/device_tools/frame
 	name = "F.R.A.M.E. PDA Cartridge"
@@ -1353,7 +1407,7 @@ GLOBAL_LIST_INIT(uplink_items, subtypesof(/datum/uplink_item))
 	name = "Stimpack"
 	desc = "Stimpacks, the tool of many great heroes, make you nearly immune to stuns and knockdowns for about \
 			5 minutes after injection."
-	item = /obj/item/reagent_containers/syringe/stimulants
+	item = /obj/item/reagent_containers/hypospray/medipen/stimulants
 	cost = 5
 	surplus = 90
 
@@ -1423,7 +1477,9 @@ GLOBAL_LIST_INIT(uplink_items, subtypesof(/datum/uplink_item))
 	desc = "The Protocol CRAB-17 Phone, a phone borrowed from an unknown third party, it can be used to crash the space market, funneling the losses of the crew to your bank account.\
 	The crew can move their funds to a new banking site though, unless they HODL, in which case they deserve it."
 	item = /obj/item/suspiciousphone
+	restricted = TRUE
 	cost = 7
+	limited_stock = 1
 
 // Implants
 /datum/uplink_item/implants
@@ -1433,7 +1489,7 @@ GLOBAL_LIST_INIT(uplink_items, subtypesof(/datum/uplink_item))
 /datum/uplink_item/implants/adrenal
 	name = "Adrenal Implant"
 	desc = "An implant injected into the body, and later activated at the user's will. It will inject a chemical \
-			cocktail which removes all incapacitating effects, lets the user run faster and has a mild healing effect."
+			cocktail which lets you push yourself harder to get out of sticky situations. Avoid large doses if possible."
 	item = /obj/item/storage/box/syndie_kit/imp_adrenal
 	cost = 8
 	player_minimum = 25
@@ -1441,7 +1497,7 @@ GLOBAL_LIST_INIT(uplink_items, subtypesof(/datum/uplink_item))
 /datum/uplink_item/implants/antistun
 	name = "CNS Rebooter Implant"
 	desc = "This implant will help you get back up on your feet faster after being stunned. Comes with an autosurgeon."
-	item = /obj/item/autosurgeon/anti_stun
+	item = /obj/item/autosurgeon/syndicate/anti_stun
 	cost = 12
 	surplus = 0
 	include_modes = list(/datum/game_mode/nuclear)
@@ -1482,7 +1538,7 @@ GLOBAL_LIST_INIT(uplink_items, subtypesof(/datum/uplink_item))
 /datum/uplink_item/implants/reviver
 	name = "Reviver Implant"
 	desc = "This implant will attempt to revive and heal you if you lose consciousness. Comes with an autosurgeon."
-	item = /obj/item/autosurgeon/reviver
+	item = /obj/item/autosurgeon/syndicate/reviver
 	cost = 8
 	surplus = 0
 	include_modes = list(/datum/game_mode/nuclear)
@@ -1504,7 +1560,7 @@ GLOBAL_LIST_INIT(uplink_items, subtypesof(/datum/uplink_item))
 /datum/uplink_item/implants/thermals
 	name = "Thermal Eyes"
 	desc = "These cybernetic eyes will give you thermal vision. Comes with a free autosurgeon."
-	item = /obj/item/autosurgeon/thermal_eyes
+	item = /obj/item/autosurgeon/syndicate/thermal_eyes
 	cost = 8
 	surplus = 0
 	include_modes = list(/datum/game_mode/nuclear)
@@ -1522,7 +1578,7 @@ GLOBAL_LIST_INIT(uplink_items, subtypesof(/datum/uplink_item))
 /datum/uplink_item/implants/xray
 	name = "X-ray Vision Implant"
 	desc = "These cybernetic eyes will give you X-ray vision. Comes with an autosurgeon."
-	item = /obj/item/autosurgeon/xray_eyes
+	item = /obj/item/autosurgeon/syndicate/xray_eyes
 	cost = 10
 	surplus = 0
 	include_modes = list(/datum/game_mode/nuclear)
@@ -1555,7 +1611,7 @@ GLOBAL_LIST_INIT(uplink_items, subtypesof(/datum/uplink_item))
 	cost = 20
 	restricted_roles = list("Assistant")
 	surplus = 0
-	
+
 /datum/uplink_item/role_restricted/oldtoolboxclean
 	name = "Ancient Toolbox"
 	desc = "An iconic toolbox design notorious with Assistants everywhere, this design was especially made to become more robust the more telecrystals it has inside it! Tools and insulated gloves included."
@@ -1608,6 +1664,17 @@ GLOBAL_LIST_INIT(uplink_items, subtypesof(/datum/uplink_item))
 	item = /obj/item/sbeacondrop/clownbomb
 	cost = 15
 	restricted_roles = list("Clown")
+
+
+/datum/uplink_item/role_restricted/spider_injector
+	name = "Australicus Slime Mutator"
+	desc = "Crikey mate, it's been a wild travel from the Australicus sector but we've managed to get \
+			some special spider extract from the giant spiders down there. Use this injector on a gold slime core \
+			to create a few of the same type of spiders we found on the planets over there. They're a bit tame until you \
+			also give them a bit of sentience though."
+	item = /obj/item/reagent_containers/syringe/spider_extract
+	cost = 10
+	restricted_roles = list("Research Director", "Scientist", "Roboticist")
 
 /datum/uplink_item/role_restricted/clowncar
 	name = "Clown Car"
@@ -1690,7 +1757,7 @@ GLOBAL_LIST_INIT(uplink_items, subtypesof(/datum/uplink_item))
 	name = "Magillitis Serum Autoinjector"
 	desc = "A single-use autoinjector which contains an experimental serum that causes rapid muscular growth in Hominidae. \
 			Side-affects may include hypertrichosis, violent outbursts, and an unending affinity for bananas."
-	item = /obj/item/reagent_containers/hypospray/magillitis
+	item = /obj/item/reagent_containers/hypospray/medipen/magillitis
 	cost = 15
 	restricted_roles = list("Geneticist", "Chief Medical Officer")
 
@@ -1725,6 +1792,14 @@ GLOBAL_LIST_INIT(uplink_items, subtypesof(/datum/uplink_item))
 	item = /obj/item/storage/box/hug/reverse_revolver
 	restricted_roles = list("Clown")
 
+/datum/uplink_item/role_restricted/laser_arm
+	name = "Laser Arm Implant"
+	desc = "An implant that grants you a recharging laser gun inside your arm. Weak to EMPs. Comes with a syndicate autosurgeon for immediate self-application."
+	cost = 10
+	item = /obj/item/autosurgeon/syndicate/laser_arm
+	restricted_roles = list("Roboticist")
+
+
 // Pointless
 /datum/uplink_item/badass
 	category = "(Pointless) Badassery"
@@ -1757,7 +1832,7 @@ GLOBAL_LIST_INIT(uplink_items, subtypesof(/datum/uplink_item))
 	name = "Syndicate Balloon"
 	desc = "For showing that you are THE BOSS: A useless red balloon with the Syndicate logo on it. \
 			Can blow the deepest of covers."
-	item = /obj/item/toy/syndicateballoon
+	item = /obj/item/toy/balloon/syndicate
 	cost = 20
 	cant_discount = TRUE
 	illegal_tech = FALSE

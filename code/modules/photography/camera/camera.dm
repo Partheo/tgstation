@@ -14,7 +14,8 @@
 	w_class = WEIGHT_CLASS_SMALL
 	flags_1 = CONDUCT_1
 	slot_flags = ITEM_SLOT_NECK
-	materials = list(MAT_METAL = 50, MAT_GLASS = 150)
+	custom_materials = list(/datum/material/iron = 50, /datum/material/glass = 150)
+	custom_price = 120
 	var/flash_enabled = TRUE
 	var/state_on = "camera"
 	var/state_off = "camera_off"
@@ -45,16 +46,26 @@
 
 /obj/item/camera/examine(mob/user)
 	. = ..()
-	to_chat(user, "<span class='notice'>Alt-click to change its focusing, allowing you to set how big of an area it will capture.</span>")
+	. += "<span class='notice'>Alt-click to change its focusing, allowing you to set how big of an area it will capture.</span>"
+
+/obj/item/camera/proc/adjust_zoom(mob/user)
+	var/desired_x = input(user, "How high do you want the camera to shoot, between [picture_size_x_min] and [picture_size_x_max]?", "Zoom", picture_size_x) as num|null
+
+	if (isnull(desired_x))
+		return
+
+	var/desired_y = input(user, "How wide do you want the camera to shoot, between [picture_size_y_min] and [picture_size_y_max]?", "Zoom", picture_size_y) as num|null
+	
+	if (isnull(desired_y))
+		return
+
+	picture_size_x = min(CLAMP(desired_x, picture_size_x_min, picture_size_x_max), CAMERA_PICTURE_SIZE_HARD_LIMIT)
+	picture_size_y = min(CLAMP(desired_y, picture_size_y_min, picture_size_y_max), CAMERA_PICTURE_SIZE_HARD_LIMIT)
 
 /obj/item/camera/AltClick(mob/user)
 	if(!user.canUseTopic(src, BE_CLOSE))
 		return
-	var/desired_x = input(user, "How high do you want the camera to shoot, between [picture_size_x_min] and [picture_size_x_max]?", "Zoom", picture_size_x) as num
-	var/desired_y = input(user, "How wide do you want the camera to shoot, between [picture_size_y_min] and [picture_size_y_max]?", "Zoom", picture_size_y) as num
-	picture_size_x = min(CLAMP(desired_x, picture_size_x_min, picture_size_x_max), CAMERA_PICTURE_SIZE_HARD_LIMIT)
-	picture_size_y = min(CLAMP(desired_y, picture_size_y_min, picture_size_y_max), CAMERA_PICTURE_SIZE_HARD_LIMIT)
-
+	adjust_zoom(user)
 
 /obj/item/camera/attack(mob/living/carbon/human/M, mob/user)
 	return
@@ -83,8 +94,8 @@
 	..()
 
 /obj/item/camera/examine(mob/user)
-	..()
-	to_chat(user, "It has [pictures_left] photos left.")
+	. = ..()
+	. += "It has [pictures_left] photos left."
 
 //user can be atom or mob
 /obj/item/camera/proc/can_target(atom/target, mob/user, prox_flag)
@@ -169,8 +180,14 @@
 	var/list/mobs = list()
 	var/blueprints = FALSE
 	var/clone_area = SSmapping.RequestBlockReservation(size_x * 2 + 1, size_y * 2 + 1)
-	for(var/turf/T in block(locate(target_turf.x - size_x, target_turf.y - size_y, target_turf.z), locate(target_turf.x + size_x, target_turf.y + size_y, target_turf.z)))
-		if((ai_user && GLOB.cameranet.checkTurfVis(T)) || (T in seen))
+	for(var/turf/placeholder in block(locate(target_turf.x - size_x, target_turf.y - size_y, target_turf.z), locate(target_turf.x + size_x, target_turf.y + size_y, target_turf.z)))
+		var/turf/T = placeholder
+		while(istype(T, /turf/open/openspace)) //Multi-z photography
+			T = SSmapping.get_turf_below(T)
+			if(!T)
+				break
+		
+		if(T && ((ai_user && GLOB.cameranet.checkTurfVis(placeholder)) || (placeholder in seen)))
 			turfs += T
 			for(var/mob/M in T)
 				mobs += M
@@ -221,7 +238,7 @@
 		else
 			if(default_picture_name)
 				picture.picture_name = default_picture_name
-			
+
 		p.set_picture(picture, TRUE, TRUE)
 		if(CONFIG_GET(flag/picture_logging_camera))
 			picture.log_to_file()
