@@ -9,7 +9,6 @@
 	icon_state = "floor_magnet-f"
 	name = "electromagnetic generator"
 	desc = "A device that uses station power to create points of magnetic energy."
-	level = 1		// underfloor
 	layer = LOW_OBJ_LAYER
 	use_power = IDLE_POWER_USE
 	idle_power_usage = 50
@@ -30,9 +29,11 @@
 /obj/machinery/magnetic_module/Initialize()
 	..()
 	var/turf/T = loc
-	hide(T.intact)
 	center = T
 	SSradio.add_object(src, freq, RADIO_MAGNETS)
+
+	AddElement(/datum/element/undertile, TRAIT_T_RAY_VISIBLE)
+
 	return INITIALIZE_HINT_LATELOAD
 
 /obj/machinery/magnetic_module/LateInitialize()
@@ -43,23 +44,16 @@
 	center = null
 	return ..()
 
-// update the invisibility and icon
-/obj/machinery/magnetic_module/hide(intact)
-	invisibility = intact ? INVISIBILITY_MAXIMUM : 0
-	update_icon()
 
 // update the icon_state
 /obj/machinery/magnetic_module/update_icon_state()
 	var/state="floor_magnet"
 	var/onstate=""
+
 	if(!on)
 		onstate="0"
 
-	if(invisibility)
-		icon_state = "[state][onstate]-f"	// if invisible, set icon to faded version
-											// in case of being revealed by T-scanner
-	else
-		icon_state = "[state][onstate]"
+	icon_state = "[state][onstate]"
 
 /obj/machinery/magnetic_module/receive_signal(datum/signal/signal)
 
@@ -207,8 +201,8 @@
 	var/speed = 1 // lowest = 1, highest = 10
 	var/list/rpath = list() // real path of the magnet, used in iterator
 
-	var/moving = 0 // 1 if scheduled to loop
-	var/looping = 0 // 1 if looping
+	var/moving = TRUE // true if scheduled to loop
+	var/looping = TRUE // true if looping
 
 	var/datum/radio_frequency/radio_connection
 
@@ -307,7 +301,7 @@
 			if("setpath")
 				var/newpath = stripped_input(usr, "Please define a new path!", "New Path", path, MAX_MESSAGE_LEN)
 				if(newpath && newpath != "")
-					moving = 0 // stop moving
+					moving = FALSE // stop moving
 					path = newpath
 					pathpos = 1 // reset position
 					filter_path() // renders rpath
@@ -329,7 +323,7 @@
 		if(machine_stat & (BROKEN|NOPOWER))
 			break
 
-		looping = 1
+		looping = TRUE
 
 		// Prepare the radio signal
 		var/datum/signal/signal = new(list("code" = code))
@@ -359,7 +353,7 @@
 		else
 			sleep(12-speed)
 
-	looping = 0
+	looping = FALSE
 
 
 /obj/machinery/magnetic_controller/proc/filter_path()

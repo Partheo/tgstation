@@ -26,6 +26,9 @@ SUBSYSTEM_DEF(shuttle)
 	var/emergencyCallAmount = 0		//how many times the escape shuttle was called
 	var/emergencyNoEscape
 	var/emergencyNoRecall = FALSE
+	var/adminEmergencyNoRecall = FALSE
+	var/lastMode = SHUTTLE_IDLE
+	var/lastCallTime = 6000
 	var/list/hostileEnvironments = list() //Things blocking escape shuttle from leaving
 	var/list/tradeBlockade = list() //Things blocking cargo from leaving.
 	var/supplyBlocked = FALSE
@@ -47,7 +50,7 @@ SUBSYSTEM_DEF(shuttle)
 
 	var/datum/round_event/shuttle_loan/shuttle_loan
 
-	var/shuttle_purchased = FALSE //If the station has purchased a replacement escape shuttle this round
+	var/shuttle_purchased = SHUTTLEPURCHASE_PURCHASABLE //If the station has purchased a replacement escape shuttle this round
 	var/list/shuttle_purchase_requirements_met = list() //For keeping track of ingame events that would unlock new shuttles, such as defeating a boss or discovering a secret item
 
 	var/lockdown = FALSE	//disallow transit after nuke goes off
@@ -126,7 +129,7 @@ SUBSYSTEM_DEF(shuttle)
 				break
 
 /datum/controller/subsystem/shuttle/proc/CheckAutoEvac()
-	if(emergencyNoEscape || emergencyNoRecall || !emergency || !SSticker.HasRoundStarted())
+	if(emergencyNoEscape || adminEmergencyNoRecall || emergencyNoRecall || !emergency || !SSticker.HasRoundStarted())
 		return
 
 	var/threshold = CONFIG_GET(number/emergency_shuttle_autocall_threshold)
@@ -153,10 +156,17 @@ SUBSYSTEM_DEF(shuttle)
 			emergency.request(null, set_coefficient = 0.4)
 
 /datum/controller/subsystem/shuttle/proc/block_recall(lockout_timer)
+	if(adminEmergencyNoRecall)
+		priority_announce("Error!", "Emergency Shuttle Uplink Alert", 'sound/misc/announce_dig.ogg')
+		addtimer(CALLBACK(src, .proc/unblock_recall), lockout_timer)
+		return
 	emergencyNoRecall = TRUE
 	addtimer(CALLBACK(src, .proc/unblock_recall), lockout_timer)
 
 /datum/controller/subsystem/shuttle/proc/unblock_recall()
+	if(adminEmergencyNoRecall)
+		priority_announce("Error!", "Emergency Shuttle Uplink Alert", 'sound/misc/announce_dig.ogg')
+		return
 	emergencyNoRecall = FALSE
 
 /datum/controller/subsystem/shuttle/proc/getShuttle(id)
@@ -171,6 +181,34 @@ SUBSYSTEM_DEF(shuttle)
 			return S
 	WARNING("couldn't find dock with id: [id]")
 
+/datum/controller/subsystem/shuttle/proc/canEvac(mob/user)
+	var/srd = CONFIG_GET(number/shuttle_refuel_delay)
+	if(world.time - SSticker.round_start_time < srd)
+		to_chat(user, "<span class='alert'>The emergency shuttle is refueling. Please wait [DisplayTimeText(srd - (world.time - SSticker.round_start_time))] before trying again.</span>")
+		return FALSE
+
+	switch(emergency.mode)
+		if(SHUTTLE_RECALL)
+			to_chat(user, "<span class='alert'>The emergency shuttle may not be called while returning to CentCom.</span>")
+			return FALSE
+		if(SHUTTLE_CALL)
+			to_chat(user, "<span class='alert'>The emergency shuttle is already on its way.</span>")
+			return FALSE
+		if(SHUTTLE_DOCKED)
+			to_chat(user, "<span class='alert'>The emergency shuttle is already here.</span>")
+			return FALSE
+		if(SHUTTLE_IGNITING)
+			to_chat(user, "<span class='alert'>The emergency shuttle is firing its engines to leave.</span>")
+			return FALSE
+		if(SHUTTLE_ESCAPE)
+			to_chat(user, "<span class='alert'>The emergency shuttle is moving away to a safe distance.</span>")
+			return FALSE
+		if(SHUTTLE_STRANDED, SHUTTLE_DISABLED)
+			to_chat(user, "<span class='alert'>The emergency shuttle has been disabled by CentCom.</span>")
+			return FALSE
+
+	return TRUE
+
 /datum/controller/subsystem/shuttle/proc/requestEvac(mob/user, call_reason)
 	if(!emergency)
 		WARNING("requestEvac(): There is no emergency shuttle, but the \
@@ -184,30 +222,9 @@ SUBSYSTEM_DEF(shuttle)
 			manually, and then calling register() on the mobile docking port. \
 			Good luck.")
 		emergency = backup_shuttle
-	var/srd = CONFIG_GET(number/shuttle_refuel_delay)
-	if(world.time - SSticker.round_start_time < srd)
-		to_chat(user, "<span class='alert'>The emergency shuttle is refueling. Please wait [DisplayTimeText(srd - (world.time - SSticker.round_start_time))] before trying again.</span>")
-		return
 
-	switch(emergency.mode)
-		if(SHUTTLE_RECALL)
-			to_chat(user, "<span class='alert'>The emergency shuttle may not be called while returning to CentCom.</span>")
-			return
-		if(SHUTTLE_CALL)
-			to_chat(user, "<span class='alert'>The emergency shuttle is already on its way.</span>")
-			return
-		if(SHUTTLE_DOCKED)
-			to_chat(user, "<span class='alert'>The emergency shuttle is already here.</span>")
-			return
-		if(SHUTTLE_IGNITING)
-			to_chat(user, "<span class='alert'>The emergency shuttle is firing its engines to leave.</span>")
-			return
-		if(SHUTTLE_ESCAPE)
-			to_chat(user, "<span class='alert'>The emergency shuttle is moving away to a safe distance.</span>")
-			return
-		if(SHUTTLE_STRANDED)
-			to_chat(user, "<span class='alert'>The emergency shuttle has been disabled by CentCom.</span>")
-			return
+	if(!canEvac(user))
+		return
 
 	call_reason = trim(html_encode(call_reason))
 
@@ -235,7 +252,7 @@ SUBSYSTEM_DEF(shuttle)
 	var/area/A = get_area(user)
 
 	log_shuttle("[key_name(user)] has called the emergency shuttle.")
-	deadchat_broadcast(" has called the shuttle at <span class='name'>[A.name]</span>.", "<span class='name'>[user.real_name]</span>", user)
+	deadchat_broadcast(" has called the shuttle at <span class='name'>[A.name]</span>.", "<span class='name'>[user.real_name]</span>", user, message_type=DEADCHAT_ANNOUNCEMENT)
 	if(call_reason)
 		SSblackbox.record_feedback("text", "shuttle_reason", 1, "[call_reason]")
 		log_shuttle("Shuttle call reason: [call_reason]")
@@ -273,11 +290,11 @@ SUBSYSTEM_DEF(shuttle)
 		emergency.cancel(get_area(user))
 		log_shuttle("[key_name(user)] has recalled the shuttle.")
 		message_admins("[ADMIN_LOOKUPFLW(user)] has recalled the shuttle.")
-		deadchat_broadcast(" has recalled the shuttle from <span class='name'>[get_area_name(user, TRUE)]</span>.", "<span class='name'>[user.real_name]</span>", user)
+		deadchat_broadcast(" has recalled the shuttle from <span class='name'>[get_area_name(user, TRUE)]</span>.", "<span class='name'>[user.real_name]</span>", user, message_type=DEADCHAT_ANNOUNCEMENT)
 		return 1
 
 /datum/controller/subsystem/shuttle/proc/canRecall()
-	if(!emergency || emergency.mode != SHUTTLE_CALL || emergencyNoRecall || SSticker.mode.name == "meteor")
+	if(!emergency || emergency.mode != SHUTTLE_CALL || adminEmergencyNoRecall || emergencyNoRecall || SSticker.mode.name == "meteor")
 		return
 	var/security_num = seclevel2num(get_security_level())
 	switch(security_num)
@@ -296,7 +313,7 @@ SUBSYSTEM_DEF(shuttle)
 	if (!SSticker.IsRoundInProgress())
 		return
 
-	var/callShuttle = 1
+	var/callShuttle = TRUE
 
 	for(var/thing in GLOB.shuttle_caller_list)
 		if(isAI(thing))
@@ -312,7 +329,7 @@ SUBSYSTEM_DEF(shuttle)
 
 		var/turf/T = get_turf(thing)
 		if(T && is_station_level(T.z))
-			callShuttle = 0
+			callShuttle = FALSE
 			break
 
 	if(callShuttle)
@@ -701,7 +718,7 @@ SUBSYSTEM_DEF(shuttle)
 
 /datum/controller/subsystem/shuttle/proc/load_template(datum/map_template/shuttle/S)
 	. = FALSE
-	// load shuttle template, centred at shuttle import landmark,
+	// Load shuttle template to a fresh block reservation.
 	preview_reservation = SSmapping.RequestBlockReservation(S.width, S.height, SSmapping.transit.z_value, /datum/turf_reservation/transit)
 	if(!preview_reservation)
 		CRASH("failed to reserve an area for shuttle template loading")
@@ -745,13 +762,14 @@ SUBSYSTEM_DEF(shuttle)
 		preview_shuttle.jumpToNullSpace()
 	preview_shuttle = null
 
+/datum/controller/subsystem/shuttle/ui_state(mob/user)
+	return GLOB.admin_state
 
-/datum/controller/subsystem/shuttle/ui_interact(mob/user, ui_key = "main", datum/tgui/ui = null, force_open = FALSE, datum/tgui/master_ui = null, datum/ui_state/state = GLOB.admin_state)
-	ui = SStgui.try_update_ui(user, src, ui_key, ui, force_open)
+/datum/controller/subsystem/shuttle/ui_interact(mob/user, datum/tgui/ui)
+	ui = SStgui.try_update_ui(user, src, ui)
 	if(!ui)
-		ui = new(user, src, ui_key, "shuttle_manipulator", name, 800, 600, master_ui, state)
+		ui = new(user, src, "ShuttleManipulator")
 		ui.open()
-
 
 /datum/controller/subsystem/shuttle/ui_data(mob/user)
 	var/list/data = list()

@@ -7,7 +7,7 @@
 	name = "circuit board"
 	icon = 'icons/obj/module.dmi'
 	icon_state = "id_mod"
-	item_state = "electronic"
+	inhand_icon_state = "electronic"
 	lefthand_file = 'icons/mob/inhands/misc/devices_lefthand.dmi'
 	righthand_file = 'icons/mob/inhands/misc/devices_righthand.dmi'
 	custom_materials = list(/datum/material/glass=1000)
@@ -37,7 +37,7 @@ micro-manipulator, console screen, beaker, Microlaser, matter bin, power cells.
 		return
 
 	M.component_parts = list(src) // List of components always contains a board
-	moveToNullspace()
+	forceMove(M)
 
 	for(var/comp_path in req_components)
 		var/comp_amt = req_components[comp_path]
@@ -48,10 +48,10 @@ micro-manipulator, console screen, beaker, Microlaser, matter bin, power cells.
 			comp_path = def_components[comp_path]
 
 		if(ispath(comp_path, /obj/item/stack))
-			M.component_parts += new comp_path(null, comp_amt)
+			M.component_parts += new comp_path(M, comp_amt)
 		else
 			for(var/i in 1 to comp_amt)
-				M.component_parts += new comp_path(null)
+				M.component_parts += new comp_path(M)
 
 	M.RefreshParts()
 
